@@ -1,8 +1,8 @@
 import vk_api
+import bs4
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.utils import get_random_id
 from MessageClass import MessageClass
-
 
 def main():
     key_access = 'vk1.a.El5OgrYlMPQrrFUIdR5EdvbaU8vBDXZNz7j73k0usi' \
