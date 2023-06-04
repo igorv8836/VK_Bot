@@ -1,4 +1,5 @@
 import datetime
+import os
 import re
 
 import openpyxl
@@ -8,15 +9,18 @@ import bs4
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.utils import get_random_id
+
+import TeacherSchedule
 import config
 import sqlite3
-from googletrans import Translator
 
 from Schedule import Schedule
 
 
 class Bot:
     def __init__(self):
+        if not os.path.exists('1.xlsx'):
+            self.load_schedule_file()
         self.number_week = divmod((datetime.datetime.now() - datetime.datetime(2023, 2, 6)).days, 7)[0] + 1
         self.key_access = config.TOKEN
         self.vk_session = vk_api.VkApi(token=self.key_access)
@@ -26,8 +30,6 @@ class Bot:
         self.schedule_data = []
         self.parse_schedule_file()
         self.schedule = Schedule(self.schedule_data)
-        self.translator = Translator()
-        print(11)
 
     def start(self):
         for event in self.longpoll.listen():
@@ -66,8 +68,6 @@ class Bot:
                 column = []
                 for j in range(2, 88):
                     v = str(sheet.cell(column=i, row=j).value)
-                    if j == 52 and i == 126:
-                        print(0)
                     v = re.sub(r'\n+', '\n', v)
                     if j == 2 and re.match(r'\w{4}-\d{2}-\d{2}', v):
                         last_group_cell = 0
@@ -136,9 +136,11 @@ class Bot:
                         self.send_message(u_id, 'Нечетная неделя:\n' +
                                           self.schedule.groups[self.schedule.str_groups.index(f_message_sp[2].upper())].week[
                                               sp.index(f_message_sp[1])].str(1))
-                    else:
+                    elif len(f_message_sp) == 2 and f_message_sp[1] in sp:
                         self.send_message(u_id, 'Четная неделя:\n' + self.schedule.groups[self.schedule.str_groups.index(group)].week[sp.index(f_message_sp[1])].str(0))
                         self.send_message(u_id, 'Нечетная неделя:\n' + self.schedule.groups[self.schedule.str_groups.index(group)].week[sp.index(f_message_sp[1])].str(1))
+                    else:
+                        self.send_message(u_id, 'Я не знаю такой команды')
                 else:
                     self.send_message(u_id, 'Я не знаю такой команды')
                 return
@@ -162,7 +164,7 @@ class Bot:
                 self.vk_session.method('messages.send',
                                        {'user_id': u_id,
                                         'message': f_message,
-                                        'random_id': 1,
+                                        'random_id': get_random_id(),
                                         'keyboard': keyboard.get_keyboard()})
 
             case 'на сегодня':
@@ -171,7 +173,7 @@ class Bot:
                 else:
                     self.send_message(
                         u_id,
-                        self.schedule.groups[self.schedule.str_groups.index(group)].week[
+                        'Расписание на сегодня\n' + self.schedule.groups[self.schedule.str_groups.index(group)].week[
                             datetime.datetime.now().weekday()].str(self.number_week % 2))
                 return
             case 'на завтра':
@@ -180,23 +182,23 @@ class Bot:
                 elif datetime.datetime.now().weekday() == 6:
                     self.send_message(
                         u_id,
-                        self.schedule.groups[self.schedule.str_groups.index(group)].week[0].str(
+                        'Расписание на завтра\n' + self.schedule.groups[self.schedule.str_groups.index(group)].week[0].str(
                             (self.number_week + 1) % 2))
                 else:
                     self.send_message(
                         u_id,
-                        self.schedule.groups[self.schedule.str_groups.index(group)].week[
+                        'Расписание на завтра\n' + self.schedule.groups[self.schedule.str_groups.index(group)].week[
                             (datetime.datetime.now().weekday() + 1) % 7].str(self.number_week % 2))
                 return
             case 'на эту неделю':
                 self.send_message(
                     u_id,
-                    self.schedule.groups[self.schedule.str_groups.index(group)].str(self.number_week % 2))
+                    f'Расписание на {self.number_week} неделю\n' + self.schedule.groups[self.schedule.str_groups.index(group)].str(self.number_week % 2))
                 return
             case 'на следующую неделю':
                 self.send_message(
                     u_id,
-                    self.schedule.groups[self.schedule.str_groups.index(group)].str((self.number_week + 1) % 2))
+                    f'Расписание на {self.number_week + 1} неделю\n' + self.schedule.groups[self.schedule.str_groups.index(group)].str((self.number_week + 1) % 2))
                 return
             case 'какая неделя?':
                 self.send_message(u_id, 'Сейчас ' + str(self.number_week) + ' неделя')
@@ -205,13 +207,13 @@ class Bot:
                 self.send_message(u_id, 'Расписание для группы ' + group.upper())
                 return
             case 'погода':
-                api_key = 'e4bd1e894a7a54294374b554452de587'
+                api_key = '167a4ba5a033a64868eea0253be66cc7'
                 city_name = 'Moscow'
                 url = f'http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={api_key}&units=metric'
                 response = requests.get(url)
                 if response.status_code == 200:
                     data = response.json()
-                    weather = data['weather'][0]['description']
+                    weather = data['weather'][0]['main']
                     temperature = data['main']['temp']
                     pressure = data['main']['pressure']
                     humidity = data['main']['humidity']
@@ -219,35 +221,48 @@ class Bot:
                     wind_direction = data['wind']['deg']
 
                     if wind_direction >= 337.5 or wind_direction <= 22.5:
-                        wind_direction = "Северный"
+                        wind_direction = "северный"
                     elif wind_direction >= 22.5 or wind_direction <= 67.5:
-                        wind_direction = "Северо-восточный"
+                        wind_direction = "северо-восточный"
                     elif wind_direction >= 67.5 or wind_direction <= 112.5:
-                        wind_direction = "Восточный"
+                        wind_direction = "восточный"
                     elif wind_direction >= 112.5 or wind_direction <= 157.5:
-                        wind_direction = "Юго-Восточный"
+                        wind_direction = "юго-Восточный"
                     elif wind_direction >= 157.5 or wind_direction <= 202.5:
-                        wind_direction = "Южный"
+                        wind_direction = "южный"
                     elif wind_direction >= 202.5 or wind_direction <= 247.5:
-                        wind_direction = "Юго-Западный"
+                        wind_direction = "юго-Западный"
                     elif wind_direction >= 247.5 or wind_direction <= 292.5:
-                        wind_direction = "Западный"
+                        wind_direction = "западный"
                     elif wind_direction >= 292.5 or wind_direction <= 337.5:
-                        wind_direction = "Северо-Западный"
+                        wind_direction = "северо-Западный"
 
                     wind_text = ''
                     if wind_speed >= 29:
-                        wind_text = 'Ураган'
+                        wind_text = 'ураган'
                     elif wind_speed >= 19:
-                        wind_text = 'Шторм'
+                        wind_text = 'шторм'
                     elif wind_speed >= 12:
-                        wind_text = 'Сильный'
+                        wind_text = 'сильный'
                     elif wind_speed >= 2:
-                        wind_text = 'Слабый'
+                        wind_text = 'слабый'
                     else:
-                        wind_text = 'Штиль'
+                        wind_text = 'штиль'
 
-                    weather = self.translator.translate(weather, dest='ru').text
+                    if weather == 'Thunderstorm':
+                        weather = 'гроза'
+                    elif weather == 'Drizzle':
+                        weather = 'морось'
+                    elif weather == 'Rain':
+                        weather = 'дождливо'
+                    elif weather == 'Snow':
+                        weather = 'снежно'
+                    elif weather == 'Clear':
+                        weather = 'ясно'
+                    elif weather == 'Clouds':
+                        weather = 'облачно'
+                    else:
+                        weather = 'необычно'
 
                     weather_str = f'Погода в городе Москва: {weather}\n' \
                                   f'Температура: {temperature} °C\n' \
@@ -256,3 +271,39 @@ class Bot:
                                   f'Ветер: {wind_text}, {wind_speed} м/c, {wind_direction}'
                     self.send_message(u_id, weather_str)
                 return
+        if len(f_message_sp) >= 2 and f_message_sp[0] == 'найти':
+
+            temp = f_message_sp[1]
+            if len(f_message_sp) == 3:
+                temp += " " + f_message_sp[2]
+            teacher_schedule_req = requests.get(f'https://timetable.mirea.ru/api/teacher/search/{temp}')
+            if teacher_schedule_req.status_code == 200:
+                teacher_schedule = teacher_schedule_req.json()
+                if len(teacher_schedule) == 0:
+                    self.send_message(u_id, "Такой преподаватель не найден")
+                    return
+                elif len(teacher_schedule) > 1:
+                    keyboard = VkKeyboard(one_time=True)
+
+                    for i in range(len(teacher_schedule)):
+                        keyboard.add_button('Найти ' + teacher_schedule[i]['name'], color=VkKeyboardColor.SECONDARY)
+                        if i + 1 != len(teacher_schedule):
+                            keyboard.add_line()
+                    self.vk_session.method('messages.send',
+                                           {'user_id': u_id,
+                                            'message': 'Выберите нужного преподавателя',
+                                            'random_id': get_random_id(),
+                                            'keyboard': keyboard.get_keyboard()})
+                    return
+                else:
+                    lessons = sorted(teacher_schedule['lessons'], key=lambda x: (x['weekday'], x['calls']['num']))
+                    print(teacher_schedule)
+
+
+
+
+
+
+
+        self.send_message(u_id, "Неизвестная команда")
+        return
